@@ -62,13 +62,27 @@ func (c *Client) readPump() {
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
-		// Try to parse as direct message for WebRTC signaling
+		// Пытаемся распарсить сообщение
 		var msg Message
-		if json.Unmarshal(message, &msg) == nil && msg.To != "" {
+		if err := json.Unmarshal(message, &msg); err == nil {
+			// Добавляем ID отправителя
 			msg.From = c.id
-			c.hub.directMessage <- msg
+
+			// Обрабатываем WebRTC сигналы и прямые сообщения
+			if msg.To != "" || msg.Type == "offer" || msg.Type == "answer" || msg.Type == "ice-candidate" {
+				c.hub.directMessage <- msg
+			} else {
+				// Перекодируем сообщение с добавленным From
+				updatedMsg, err := json.Marshal(msg)
+				if err == nil {
+					c.hub.broadcast <- updatedMsg
+				} else {
+					// Если не удалось перекодировать, отправляем исходное сообщение
+					c.hub.broadcast <- message
+				}
+			}
 		} else {
-			// Fallback to broadcast
+			// Если не удалось распарсить как JSON, отправляем как есть
 			c.hub.broadcast <- message
 		}
 	}

@@ -1,6 +1,9 @@
 package signaling
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type Hub struct {
 	// Registered clients.
@@ -23,10 +26,25 @@ type Hub struct {
 }
 
 type Message struct {
-	Type string          `json:"type"`
+	Type string          `json:"type"` // "offer", "answer", "ice-candidate", "direct", etc.
 	From string          `json:"from"`
 	To   string          `json:"to"`
 	Data json.RawMessage `json:"data"`
+}
+
+// Специализированные структуры для WebRTC сигналов
+type RTCOffer struct {
+	SDP string `json:"sdp"`
+}
+
+type RTCAnswer struct {
+	SDP string `json:"sdp"`
+}
+
+type RTCIceCandidate struct {
+	Candidate     string `json:"candidate"`
+	SDPMid        string `json:"sdpMid"`
+	SDPMLineIndex int    `json:"sdpMLineIndex"`
 }
 
 func NewHub() *Hub {
@@ -39,20 +57,35 @@ func NewHub() *Hub {
 		clientsById:   make(map[string]*Client),
 	}
 }
+
 func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
-			if client.id != "" {
-				h.clientsById[client.id] = client
+			h.clientsById[client.id] = client
+
+			// Отправляем новому клиенту список всех пользователей
+			userList := make([]string, 0, len(h.clientsById))
+			for id := range h.clientsById {
+				userList = append(userList, id)
 			}
+
+			userListMsg := Message{
+				Type: "user-list",
+				Data: json.RawMessage(fmt.Sprintf(`{"users":%s}`, marshalJSON(userList))),
+			}
+
+			msgBytes, _ := json.Marshal(userListMsg)
+			client.send <- msgBytes
+
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				delete(h.clientsById, client.id)
 				close(client.send)
 			}
+
 		case message := <-h.broadcast:
 			for client := range h.clients {
 				select {
@@ -60,19 +93,32 @@ func (h *Hub) Run() {
 				default:
 					close(client.send)
 					delete(h.clients, client)
+					delete(h.clientsById, client.id)
 				}
 			}
-		case msg := <-h.directMessage:
-			if client, ok := h.clientsById[msg.To]; ok {
-				msgBytes, _ := json.Marshal(msg)
-				select {
-				case client.send <- msgBytes:
-				default:
-					close(client.send)
-					delete(h.clients, client)
-					delete(h.clientsById, client.id)
+
+		case message := <-h.directMessage:
+			// Обработка прямых сообщений, включая WebRTC сигналы
+			if targetClient, ok := h.clientsById[message.To]; ok {
+				messageBytes, err := json.Marshal(message)
+				if err == nil {
+					select {
+					case targetClient.send <- messageBytes:
+					default:
+						close(targetClient.send)
+						delete(h.clients, targetClient)
+						delete(h.clientsById, targetClient.id)
+					}
 				}
 			}
 		}
 	}
+}
+
+func marshalJSON(v interface{}) string {
+	bytes, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(bytes)
 }
