@@ -7,7 +7,7 @@ import (
 	"server/internal/signaling"
 )
 
-var addr = flag.String("addr", "0.0.0.0:8080", "address to listen on")
+var addr = flag.String("addr", "[::]:8080", "address to listen on")
 
 func main() {
 	flag.Parse()
