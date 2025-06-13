@@ -1,31 +1,22 @@
 package signaling
 
 import (
-	"fmt"
 	"log"
 )
 
-type AnswerTypes string
-
-const (
-	AnswerTypeChat     MessageType = "chat"
-	AnswerTypeRegister MessageType = "register"
-)
-
 type Hub struct {
-	clients    map[*Client]bool
+	clients    map[string]*Client
 	register   chan *Client
 	unregister chan *Client
 	message    chan *Message
 	messages   []Message
-	answer     AnswerType
 	videochat  chan *VideoChatMessage
 }
 
 type AnswerType struct {
-	Messages []Message       `json:"messages"`
+	Messages []Message       `json:"messages,omitempty"`
 	Type     MessageType     `json:"type"`
-	Clients  map[string]bool `json:"clients"`
+	Clients  map[string]bool `json:"clients,omitempty"`
 }
 
 type AnswerVideoChatType struct {
@@ -37,9 +28,10 @@ func NewHub() *Hub {
 	return &Hub{
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
+		clients:    make(map[string]*Client),
 		messages:   make([]Message, 0),
 		message:    make(chan *Message),
+		videochat:  make(chan *VideoChatMessage),
 	}
 }
 
@@ -47,90 +39,102 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			println("REGISTER", client.id)
-			h.clients[client] = true
+			log.Printf("Client %s registered", client.id)
+			h.clients[client.id] = client
 
-			newMessage := Message{
-				Text: fmt.Sprintf("%s подключился", client.id),
-				From: client.id,
-				To:   "chat",
+			// Уведомляем нового клиента о существующих участниках
+			existingClients := make(map[string]bool)
+			for id := range h.clients {
+				if id != client.id {
+					existingClients[id] = true
+				}
 			}
 
-			h.messages = append(h.messages, newMessage)
-
+			// Отправляем новому клиенту список существующих участников
 			newAnswer := AnswerType{
 				Type:     "register",
 				Messages: h.messages,
-				Clients:  convertClients(h.clients),
+				Clients:  existingClients,
 			}
+			client.send <- newAnswer
 
-			for client := range h.clients {
-				client.send <- newAnswer
+			// Уведомляем всех остальных о новом участнике
+			newUserMessage := AnswerType{
+				Type:    "new-user",
+				Clients: map[string]bool{client.id: true},
 			}
-		case msg := <-h.message:
-			h.messages = append(h.messages, *msg)
-
-			newAnswer := AnswerType{
-				Type:     "chat",
-				Messages: h.messages,
-				Clients:  convertClients(h.clients),
-			}
-
-			for client := range h.clients {
-				select {
-				case client.send <- newAnswer:
-				default:
-					close(client.send)
-					delete(h.clients, client)
-				}
-			}
-		case unregister := <-h.unregister:
-			newMessage := Message{
-				Text: fmt.Sprintf("Покинул чат%s:", unregister.id),
-				From: unregister.id,
-				To:   "chat",
-			}
-			h.messages = append(h.messages, newMessage)
-			delete(h.clients, unregister)
-			newAnswer := AnswerType{
-				Type:     "chat",
-				Messages: h.messages,
-				Clients:  convertClients(h.clients),
-			}
-			for client := range h.clients {
-				select {
-				case client.send <- newAnswer:
-				}
-			}
-		case videoMsg := <-h.videochat:
-			log.Printf("Получено сырое сообщение: %v", videoMsg)
-			if videoMsg.Offer == nil && videoMsg.Answer == nil && videoMsg.IceCandidate == nil {
-				log.Println("Invalid message received")
-				continue
-			}
-
-			answer := AnswerVideoChatType{
-				Type: "videochat", // установите тип сообщения
-				Data: *videoMsg,   // используем существующее видео-сообщение как данные
-			}
-
-			for client := range h.clients {
-				if client.id != videoMsg.UserId {
-					if err := client.conn.WriteJSON(answer); err != nil {
-						log.Printf("<UNK> <UNK> <UNK>: %v", err)
-						client.conn.Close()
-						delete(h.clients, client)
+			for id, c := range h.clients {
+				if id != client.id {
+					select {
+					case c.send <- newUserMessage:
+					default:
+						close(c.send)
+						delete(h.clients, id)
 					}
 				}
+			}
+
+		case msg := <-h.message:
+			h.messages = append(h.messages, *msg)
+			newAnswer := AnswerType{
+				Type:     "chat",
+				Messages: h.messages,
+				Clients:  h.getActiveClients(),
+			}
+			h.broadcast(newAnswer)
+
+		case client := <-h.unregister:
+			if _, ok := h.clients[client.id]; ok {
+				log.Printf("Client %s unregistered", client.id)
+				delete(h.clients, client.id)
+				close(client.send)
+
+				// Уведомляем остальных об отключении
+				userLeftMessage := AnswerType{
+					Type:    "user-left",
+					Clients: map[string]bool{client.id: false},
+				}
+				h.broadcast(userLeftMessage)
+			}
+
+		case videoMsg := <-h.videochat:
+			log.Printf("Video message from %s to %s", videoMsg.From, videoMsg.To)
+
+			// Находим получателя
+			if targetClient, ok := h.clients[videoMsg.To]; ok {
+				answer := AnswerVideoChatType{
+					Type: "videochat",
+					Data: *videoMsg,
+				}
+
+				select {
+				case targetClient.send <- answer:
+				default:
+					close(targetClient.send)
+					delete(h.clients, videoMsg.To)
+				}
+			} else {
+				log.Printf("Target client %s not found", videoMsg.To)
 			}
 		}
 	}
 }
 
-func convertClients(clients map[*Client]bool) map[string]bool {
+func (h *Hub) broadcast(message interface{}) {
+	for id, client := range h.clients {
+		select {
+		case client.send <- message:
+		default:
+			close(client.send)
+			delete(h.clients, id)
+		}
+	}
+}
+
+func (h *Hub) getActiveClients() map[string]bool {
 	result := make(map[string]bool)
-	for client, active := range clients {
-		result[client.id] = active
+	for id := range h.clients {
+		result[id] = true
 	}
 	return result
 }
