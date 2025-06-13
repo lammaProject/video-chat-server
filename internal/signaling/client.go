@@ -35,7 +35,7 @@ type MessageType string
 const (
 	MessageTypeChat           MessageType = "chat"
 	MessageTypeOffer          MessageType = "offer"
-	MessageTypeAnswer         MessageType = "answer"
+	MessageTypeAnswer         MessageType = "videochat"
 	MessageTypeIceCandidate   MessageType = "ice-candidate"
 	MessageTypeVideoChatStart MessageType = "video-chat-start"
 )
