@@ -11,22 +11,10 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 512
-)
-
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
 )
 
 var upgrader = websocket.Upgrader{
@@ -37,91 +25,110 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+var (
+	newline = []byte{'\n'}
+	space   = []byte{' '}
+)
+
+type MessageType string
+
+const (
+	MessageTypeChat           MessageType = "chat"
+	MessageTypeOffer          MessageType = "offer"
+	MessageTypeAnswer         MessageType = "answer"
+	MessageTypeIceCandidate   MessageType = "ice-candidate"
+	MessageTypeVideoChatStart MessageType = "video-chat-start"
+)
+
 type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
-	send chan []byte
+	send chan AnswerType
 	id   string
 }
 
+type Message struct {
+	Text string `json:"text"`
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type VideoChatMessage struct {
+	Offer        interface{} `json:"offer"`
+	Answer       interface{} `json:"answer"`
+	IceCandidate interface{} `json:"ice-candidate"`
+	UserId       string      `json:"userid"`
+}
+
+var typeCheck struct {
+	Type string `json:"type"`
+}
+
+// Преобразуем в JSON
+
 func (c *Client) readPump() {
-	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
-	}()
+	const maxMessageSize = 16384
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err,
+				websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
 		}
+		println(message)
+
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
-		// Пытаемся распарсить сообщение
-		var msg Message
-		if err := json.Unmarshal(message, &msg); err == nil {
-			// Добавляем ID отправителя
-			msg.From = c.id
-
-			// Обрабатываем WebRTC сигналы и прямые сообщения
-			if msg.To != "" || msg.Type == "offer" || msg.Type == "answer" || msg.Type == "ice-candidate" {
-				c.hub.directMessage <- msg
-			} else {
-				// Перекодируем сообщение с добавленным From
-				updatedMsg, err := json.Marshal(msg)
-				if err == nil {
-					c.hub.broadcast <- updatedMsg
-				} else {
-					// Если не удалось перекодировать, отправляем исходное сообщение
-					c.hub.broadcast <- message
-				}
-			}
-		} else {
-			// Если не удалось распарсить как JSON, отправляем как есть
-			c.hub.broadcast <- message
+		if err := json.Unmarshal(message, &typeCheck); err != nil {
+			log.Printf("Ошибка парсинга JSON: %v", err)
+			continue
 		}
+
+		switch typeCheck.Type {
+		case "chat":
+			var msg Message
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("<UNK> <UNK> JSON: %v", err)
+				continue
+			}
+			c.hub.message <- &msg
+		case "videochat":
+			var msg VideoChatMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("<UNK> <UNK> JSON: %v", err)
+				continue
+			}
+			c.hub.videochat <- &msg
+		}
+
 	}
+
+	// Отправляем сигнал отключения клиента
+	c.hub.unregister <- c
+	c.conn.Close()
 }
 
 func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
+	defer c.conn.Close()
+
 	for {
 		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		case messages, ok := <-c.send:
 			if !ok {
-				// The hub closed the channel.
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write(newline)
-				w.Write(<-c.send)
-			}
-
-			if err := w.Close(); err != nil {
-				return
-			}
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteJSON(messages); err != nil {
 				return
 			}
 		}
@@ -137,7 +144,7 @@ func ServerWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	clientId := r.URL.Query().Get("id")
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), id: clientId}
+	client := &Client{hub: hub, conn: conn, send: make(chan AnswerType), id: clientId}
 	client.hub.register <- client
 
 	go client.writePump()
