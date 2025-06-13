@@ -28,6 +28,11 @@ type AnswerType struct {
 	Clients  map[string]bool `json:"clients"`
 }
 
+type AnswerVideoChatType struct {
+	Type MessageType      `json:"type"`
+	Data VideoChatMessage `json:"data"`
+}
+
 func NewHub() *Hub {
 	return &Hub{
 		register:   make(chan *Client),
@@ -59,9 +64,8 @@ func (h *Hub) Run() {
 				Clients:  convertClients(h.clients),
 			}
 
-			h.answer = newAnswer
-			for range h.clients {
-				client.send <- h.answer
+			for client := range h.clients {
+				client.send <- newAnswer
 			}
 		case msg := <-h.message:
 			h.messages = append(h.messages, *msg)
@@ -105,9 +109,14 @@ func (h *Hub) Run() {
 				continue
 			}
 
+			answer := AnswerVideoChatType{
+				Type: "videochat", // установите тип сообщения
+				Data: *videoMsg,   // используем существующее видео-сообщение как данные
+			}
+
 			for client := range h.clients {
 				if client.id != videoMsg.UserId {
-					if err := client.conn.WriteJSON(videoMsg); err != nil {
+					if err := client.conn.WriteJSON(answer); err != nil {
 						log.Printf("<UNK> <UNK> <UNK>: %v", err)
 						client.conn.Close()
 						delete(h.clients, client)

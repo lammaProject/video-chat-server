@@ -52,12 +52,22 @@ type Message struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
-
+type RTCSessionDescription struct {
+	Type string `json:"type"` // "offer" или "answer"
+	SDP  string `json:"sdp"`  // SDP строка
+}
+type RTCIceCandidate struct {
+	Candidate        string  `json:"candidate"`
+	SdpMLineIndex    *uint16 `json:"sdpMLineIndex"`
+	SdpMid           string  `json:"sdpMid"`
+	UsernameFragment string  `json:"usernameFragment,omitempty"`
+}
 type VideoChatMessage struct {
-	Offer        interface{} `json:"offer"`
-	Answer       interface{} `json:"answer"`
-	IceCandidate interface{} `json:"ice-candidate"`
-	UserId       string      `json:"userid"`
+	Type         string                 `json:"type"` // всегда "videochat"
+	Offer        *RTCSessionDescription `json:"offer,omitempty"`
+	Answer       *RTCSessionDescription `json:"answer,omitempty"`
+	IceCandidate *RTCIceCandidate       `json:"iceCandidate,omitempty"`
+	UserId       string                 `json:"userId"` // ID отправителя
 }
 
 var typeCheck struct {
