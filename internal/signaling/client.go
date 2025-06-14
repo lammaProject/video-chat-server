@@ -3,6 +3,9 @@ package signaling
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"time"
@@ -41,10 +44,11 @@ const (
 )
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan interface{}
-	id   string
+	hub    *Hub
+	conn   *websocket.Conn
+	send   chan interface{}
+	id     string
+	roomID string
 }
 
 type Message struct {
@@ -73,6 +77,8 @@ type VideoChatMessage struct {
 	From         string                 `json:"from"`
 	To           string                 `json:"to"`
 }
+
+var jwtSecret = []byte("myapp-super-secret-jwt-key-2024-development")
 
 func (c *Client) readPump() {
 	defer func() {
@@ -158,23 +164,51 @@ func (c *Client) writePump() {
 }
 
 func ServerWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		log.Println("Token not provided in WebSocket connection")
+		http.Error(w, "Token required", http.StatusUnauthorized)
+		return
+	}
+
+	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jwtSecret, nil
+	})
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	clientId := r.URL.Query().Get("id")
-	if clientId == "" {
+	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		log.Println("Invalid token claims")
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := claims["user_id"].(string)
+	if !ok {
+		log.Println("User ID not found in context")
 		conn.Close()
 		return
 	}
 
+	log.Printf("User %s connecting to room %s", userID, roomID)
+
 	client := &Client{
-		hub:  hub,
-		conn: conn,
-		send: make(chan interface{}, 256),
-		id:   clientId,
+		id:     userID,
+		roomID: roomID,
+		hub:    hub,
+		conn:   conn,
+		send:   make(chan interface{}, 256),
 	}
 
 	client.hub.register <- client

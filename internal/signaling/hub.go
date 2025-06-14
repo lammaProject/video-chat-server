@@ -5,12 +5,14 @@ import (
 )
 
 type Hub struct {
+	roomID     string
 	clients    map[string]*Client
 	register   chan *Client
 	unregister chan *Client
 	message    chan *Message
 	messages   []Message
 	videochat  chan *VideoChatMessage
+	manager    *RoomManager
 }
 
 type AnswerType struct {
@@ -95,6 +97,10 @@ func (h *Hub) Run() {
 					Clients: map[string]bool{client.id: false},
 				}
 				h.broadcast(userLeftMessage)
+
+				if len(h.clients) == 0 && h.manager != nil {
+					h.manager.RemoveRoomIfEmpty(h.roomID)
+				}
 			}
 
 		case videoMsg := <-h.videochat:
