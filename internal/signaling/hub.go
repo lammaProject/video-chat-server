@@ -1,6 +1,8 @@
 package signaling
 
 import (
+	"database/sql"
+	"encoding/json"
 	"log"
 )
 
@@ -13,6 +15,12 @@ type Hub struct {
 	messages   []Message
 	videochat  chan *VideoChatMessage
 	manager    *RoomManager
+	db         *sql.DB
+}
+
+type ChatMessage struct {
+	Client  *Client `json:"client"`
+	Message string  `json:"message"`
 }
 
 type AnswerType struct {
@@ -26,7 +34,7 @@ type AnswerVideoChatType struct {
 	Data VideoChatMessage `json:"data"`
 }
 
-func NewHub() *Hub {
+func NewHub(db *sql.DB) *Hub {
 	return &Hub{
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
@@ -34,6 +42,7 @@ func NewHub() *Hub {
 		messages:   make([]Message, 0),
 		message:    make(chan *Message),
 		videochat:  make(chan *VideoChatMessage),
+		db:         db,
 	}
 }
 
@@ -77,10 +86,27 @@ func (h *Hub) Run() {
 			}
 
 		case msg := <-h.message:
-			h.messages = append(h.messages, *msg)
+			var messagesJSON json.RawMessage
+			err := h.db.QueryRow(`SELECT COALESCE(chat_messages, '[]'::json) FROM rooms WHERE id = $1`, h.roomID).Scan(&messagesJSON)
+			if err != nil {
+				log.Printf("Error getting chat messages: %v", err)
+				continue
+			}
+			var currentMessages []Message
+			if err := json.Unmarshal(messagesJSON, &currentMessages); err != nil {
+				log.Printf("Error parsing chat messages: %v", err)
+				continue
+			}
+			currentMessages = append(currentMessages, *msg)
+			updatedJSON, _ := json.Marshal(currentMessages)
+			_, err = h.db.Exec(`UPDATE rooms SET chat_messages = $1::json WHERE id = $2`, updatedJSON, h.roomID)
+			if err != nil {
+				log.Printf("Error updating chat messages: %v", err)
+				continue
+			}
 			newAnswer := AnswerType{
 				Type:     "chat",
-				Messages: h.messages,
+				Messages: currentMessages,
 				Clients:  h.getActiveClients(),
 			}
 			h.broadcast(newAnswer)

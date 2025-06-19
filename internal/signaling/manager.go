@@ -1,6 +1,7 @@
 package signaling
 
 import (
+	"database/sql"
 	"log"
 	"sync"
 )
@@ -18,7 +19,7 @@ func NewRoomManager() *RoomManager {
 }
 
 // Получить или создать комнату
-func (rm *RoomManager) GetOrCreateRoom(roomID string) *Hub {
+func (rm *RoomManager) GetOrCreateRoom(roomID string, db *sql.DB) *Hub {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
@@ -29,7 +30,7 @@ func (rm *RoomManager) GetOrCreateRoom(roomID string) *Hub {
 
 	// Создаем новую комнату
 	log.Printf("Creating new room: %s", roomID)
-	hub := NewHub()
+	hub := NewHub(db)
 	rm.rooms[roomID] = hub
 
 	// Запускаем Hub для этой комнаты

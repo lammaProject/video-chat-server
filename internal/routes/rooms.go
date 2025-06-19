@@ -6,6 +6,13 @@ import (
 	"net/http"
 )
 
+// @Summary Создать комнату
+// @Tags rooms
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} routes.Room
+// @Router /auth/rooms [post]
 func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	var req Room
 	userID, ok := r.Context().Value("user_id").(string)
@@ -47,6 +54,13 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// @Summary Получить все комнаты
+// @Tags rooms
+// @Accept json
+// @Product json
+// @Security BearerAuth
+// @Success 200 {array} routes.Room
+// @Router /auth/rooms [get]
 func (h *Handler) GetRooms(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {

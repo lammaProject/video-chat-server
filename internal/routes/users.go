@@ -23,6 +23,13 @@ type AuthResponse struct {
 	User  User   `json:"user"`
 }
 
+// @Summary      Получить всех пользователей
+// @Description  Получить список всех пользователей
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Failure      500  {object}  map[string]string
+// @Router       /users [get]
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT id, name FROM users ORDER BY id DESC`
 
@@ -58,6 +65,14 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// @Summary Получить пользователя по имени
+// @Description Получить данные конкретного пользователя
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param name path string true "Имя пользователя"
+// @Router /users/{name} [get]
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
@@ -84,6 +99,14 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// @Summary Регистрация пользователя
+// @Description Зарегистрировать нового пользователя
+// @Tags users
+// @Accept json
+// @Produce json
+// @Router /users/register [post]
+// @Param data body routes.RegisterRequest true "Данные"
 func (h *Handler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -140,6 +163,13 @@ func (h *Handler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		Token: token, User: user,
 	})
 }
+
+// @Summary Аутентификация
+// @Tags users
+// @Accept json
+// @Produce json
+// @Router /users/login [post]
+// @Param data body routes.LoginRequest true "Данные"
 func (h *Handler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

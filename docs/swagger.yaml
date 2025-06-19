@@ -1,0 +1,158 @@
+basePath: /
+definitions:
+  internal_routes.LoginRequest:
+    properties:
+      name:
+        type: string
+      password:
+        type: string
+    type: object
+  internal_routes.RegisterRequest:
+    properties:
+      name:
+        type: string
+      password:
+        type: string
+    type: object
+  internal_routes.Room:
+    properties:
+      created_by:
+        type: string
+      id:
+        description: Комната
+        type: string
+      name:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: This is a sample server Petstore server.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Swagger Example API
+  version: "1.0"
+paths:
+  /auth/profile:
+    get:
+      description: берется из токена
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Получить имя, id пользователя
+      tags:
+      - profile
+  /auth/rooms:
+    get:
+      consumes:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_routes.Room'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Получить все комнаты
+      tags:
+      - rooms
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_routes.Room'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Создать комнату
+      tags:
+      - rooms
+  /users:
+    get:
+      consumes:
+      - application/json
+      description: Получить список всех пользователей
+      produces:
+      - application/json
+      responses:
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить всех пользователей
+      tags:
+      - users
+  /users/{name}:
+    get:
+      consumes:
+      - application/json
+      description: Получить данные конкретного пользователя
+      parameters:
+      - description: Имя пользователя
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Получить пользователя по имени
+      tags:
+      - users
+  /users/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/internal_routes.LoginRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Аутентификация
+      tags:
+      - users
+  /users/register:
+    post:
+      consumes:
+      - application/json
+      description: Зарегистрировать нового пользователя
+      parameters:
+      - description: Данные
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/internal_routes.RegisterRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Регистрация пользователя
+      tags:
+      - users
+securityDefinitions:
+  BearerAuth:
+    description: Введите ваш токен
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

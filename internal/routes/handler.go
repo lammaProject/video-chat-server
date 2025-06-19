@@ -15,12 +15,14 @@ type Handler struct {
 }
 
 type User struct {
+	// Пользователь
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Password string `json:"password"`
 }
 
 type Room struct {
+	// Комната
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	CreatedBy string `json:"created_by"`

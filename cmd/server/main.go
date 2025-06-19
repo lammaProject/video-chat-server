@@ -7,20 +7,36 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	_ "server/docs"
 	"server/internal/routes"
 	"server/internal/signaling"
 	"syscall"
 	"time"
-
-	_ "github.com/lib/pq"
 )
 
 var db *sql.DB
 
+// @title Swagger Example API
+// @version 1.0
+// @description This is a sample server Petstore server.
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @host localhost:8080
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Введите ваш токен
 func main() {
 	var addr = flag.String("addr", "0.0.0.0:8080", "address to listen on")
 
@@ -36,12 +52,18 @@ func main() {
 	router := mux.NewRouter()
 	router.Use(loggingMiddleware)
 	router.Use(corsMiddleware)
-
 	router.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	router.PathPrefix("/swagger/").Handler(httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+		httpSwagger.DeepLinking(true),
+	))
+
 	handler := routes.NewHandler(db)
+
+	// users
 	router.HandleFunc("/users", handler.GetUsers).Methods("GET")
 	router.HandleFunc("/users/{name}", handler.GetUser).Methods("GET")
 	router.HandleFunc("/users/register", handler.RegisterUser).Methods("POST")
@@ -49,11 +71,13 @@ func main() {
 
 	protectedRouter := router.PathPrefix("/auth").Subrouter()
 	protectedRouter.Use(routes.AuthMiddleware)
+	// roms
 	protectedRouter.HandleFunc("/rooms", handler.CreateRoom).Methods("POST")
 	protectedRouter.HandleFunc("/rooms", handler.GetRooms).Methods("GET")
+	// profile
 	protectedRouter.HandleFunc("/profile", handler.GetProfile).Methods("GET")
-
-	router.HandleFunc("/ws/{roomId}", func(w http.ResponseWriter, r *http.Request) {
+	// ws
+	protectedRouter.HandleFunc("/ws/{roomId}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		roomID := vars["roomId"]
 
@@ -63,7 +87,7 @@ func main() {
 		}
 
 		// Получаем или создаем комнату
-		hub := roomManager.GetOrCreateRoom(roomID)
+		hub := roomManager.GetOrCreateRoom(roomID, db)
 		signaling.ServerWs(hub, w, r)
 	})
 

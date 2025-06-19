@@ -7,6 +7,11 @@ import (
 	"net/http"
 )
 
+// @Summary Получить имя, id пользователя
+// @Description берется из токена
+// @Tags profile
+// @Router /auth/profile [get]
+// @Security BearerAuth
 func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {

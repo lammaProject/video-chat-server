@@ -54,7 +54,6 @@ type Client struct {
 type Message struct {
 	Text string `json:"text"`
 	From string `json:"from"`
-	To   string `json:"to"`
 }
 
 type RTCSessionDescription struct {
