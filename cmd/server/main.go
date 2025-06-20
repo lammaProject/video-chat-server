@@ -71,6 +71,10 @@ func main() {
 
 	protectedRouter := router.PathPrefix("/auth").Subrouter()
 	protectedRouter.Use(routes.AuthMiddleware)
+	// friends
+	protectedRouter.HandleFunc("/friends", handler.CreateFriendship).Methods("POST")
+	// chat
+	protectedRouter.HandleFunc("/chat", handler.CreateChat).Methods("POST")
 	// roms
 	protectedRouter.HandleFunc("/rooms", handler.CreateRoom).Methods("POST")
 	protectedRouter.HandleFunc("/rooms", handler.GetRooms).Methods("GET")

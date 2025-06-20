@@ -1,5 +1,12 @@
 basePath: /
 definitions:
+  internal_routes.FriendRequest:
+    properties:
+      friend_id:
+        type: string
+      user_id:
+        type: string
+    type: object
   internal_routes.LoginRequest:
     properties:
       name:
@@ -38,6 +45,25 @@ info:
   title: Swagger Example API
   version: "1.0"
 paths:
+  /auth/friends:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/internal_routes.FriendRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Создание чата
+      tags:
+      - friends
   /auth/profile:
     get:
       description: берется из токена

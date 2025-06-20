@@ -24,6 +24,37 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/friends": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "friends"
+                ],
+                "summary": "Создание чата",
+                "parameters": [
+                    {
+                        "description": "Данные",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_routes.FriendRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/auth/profile": {
             "get": {
                 "security": [
@@ -200,6 +231,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "internal_routes.FriendRequest": {
+            "type": "object",
+            "properties": {
+                "friend_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_routes.LoginRequest": {
             "type": "object",
             "properties": {
