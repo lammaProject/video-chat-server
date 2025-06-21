@@ -73,8 +73,10 @@ func main() {
 	protectedRouter.Use(routes.AuthMiddleware)
 	// friends
 	protectedRouter.HandleFunc("/friends", handler.CreateFriendship).Methods("POST")
-	// chat
-	protectedRouter.HandleFunc("/chat", handler.CreateChat).Methods("POST")
+	protectedRouter.HandleFunc("/friends", handler.GetFriends).Methods("GET")
+	protectedRouter.HandleFunc("/friends/accepted", handler.AcceptedFriend).Methods("POST")
+	// chats
+	protectedRouter.HandleFunc("/chats", handler.CreateChat).Methods("POST")
 	// roms
 	protectedRouter.HandleFunc("/rooms", handler.CreateRoom).Methods("POST")
 	protectedRouter.HandleFunc("/rooms", handler.GetRooms).Methods("GET")

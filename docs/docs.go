@@ -24,7 +24,73 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/chats": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Создает новый чат (приватный или групповой) или присоединяет пользователя к существующему приватному чату",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chats"
+                ],
+                "summary": "Создание чата",
+                "parameters": [
+                    {
+                        "description": "Данные для создания чата",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_routes.CreateChatRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Чат успешно создан или пользователь присоединен к существующему",
+                        "schema": {
+                            "$ref": "#/definitions/internal_routes.CreateChatResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/friends": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "friends"
+                ],
+                "summary": "Получение друзей",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Статус",
+                        "name": "status",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
             "post": {
                 "security": [
                     {
@@ -40,7 +106,7 @@ const docTemplate = `{
                 "tags": [
                     "friends"
                 ],
-                "summary": "Создание чата",
+                "summary": "Создание друга",
                 "parameters": [
                     {
                         "description": "Данные",
@@ -49,6 +115,37 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/internal_routes.FriendRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/auth/friends/accepted": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "friends"
+                ],
+                "summary": "Принять друга",
+                "parameters": [
+                    {
+                        "description": "Принять друга",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_routes.AcceptedFriendRequest"
                         }
                     }
                 ],
@@ -231,6 +328,42 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "internal_routes.AcceptedFriendRequest": {
+            "type": "object",
+            "properties": {
+                "friend_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_routes.CreateChatRequest": {
+            "type": "object",
+            "properties": {
+                "friend_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type_chat": {
+                    "$ref": "#/definitions/internal_routes.TypeChat"
+                }
+            }
+        },
+        "internal_routes.CreateChatResponse": {
+            "type": "object",
+            "properties": {
+                "chat_id": {
+                    "type": "string"
+                },
+                "created": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_routes.FriendRequest": {
             "type": "object",
             "properties": {
@@ -278,6 +411,17 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "internal_routes.TypeChat": {
+            "type": "string",
+            "enum": [
+                "private",
+                "group"
+            ],
+            "x-enum-varnames": [
+                "TypeChatPrivate",
+                "TypeChatGroup"
+            ]
         }
     },
     "securityDefinitions": {

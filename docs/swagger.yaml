@@ -1,5 +1,28 @@
 basePath: /
 definitions:
+  internal_routes.AcceptedFriendRequest:
+    properties:
+      friend_id:
+        type: string
+    type: object
+  internal_routes.CreateChatRequest:
+    properties:
+      friend_id:
+        type: string
+      name:
+        type: string
+      type_chat:
+        $ref: '#/definitions/internal_routes.TypeChat'
+    type: object
+  internal_routes.CreateChatResponse:
+    properties:
+      chat_id:
+        type: string
+      created:
+        type: boolean
+      message:
+        type: string
+    type: object
   internal_routes.FriendRequest:
     properties:
       friend_id:
@@ -31,6 +54,14 @@ definitions:
       name:
         type: string
     type: object
+  internal_routes.TypeChat:
+    enum:
+    - private
+    - group
+    type: string
+    x-enum-varnames:
+    - TypeChatPrivate
+    - TypeChatGroup
 host: localhost:8080
 info:
   contact:
@@ -45,7 +76,49 @@ info:
   title: Swagger Example API
   version: "1.0"
 paths:
+  /auth/chats:
+    post:
+      consumes:
+      - application/json
+      description: Создает новый чат (приватный или групповой) или присоединяет пользователя
+        к существующему приватному чату
+      parameters:
+      - description: Данные для создания чата
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_routes.CreateChatRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Чат успешно создан или пользователь присоединен к существующему
+          schema:
+            $ref: '#/definitions/internal_routes.CreateChatResponse'
+      security:
+      - BearerAuth: []
+      summary: Создание чата
+      tags:
+      - chats
   /auth/friends:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Статус
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Получение друзей
+      tags:
+      - friends
     post:
       consumes:
       - application/json
@@ -61,7 +134,26 @@ paths:
       responses: {}
       security:
       - BearerAuth: []
-      summary: Создание чата
+      summary: Создание друга
+      tags:
+      - friends
+  /auth/friends/accepted:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Принять друга
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/internal_routes.AcceptedFriendRequest'
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Принять друга
       tags:
       - friends
   /auth/profile:
