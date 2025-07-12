@@ -16,9 +16,10 @@ type Handler struct {
 
 type User struct {
 	// Пользователь
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Password string  `json:"password"`
+	IsFriend *string `json:"is_friend,omitempty"`
 }
 
 type Room struct {

@@ -4,10 +4,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"log"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
+)
+
+var (
+	chatHubs = make(map[string]*ClientHub)
+	hubMutex sync.RWMutex
 )
 
 type TypeChat string
@@ -40,6 +48,30 @@ type CreateChatResponse struct {
 	ChatID  string `json:"chat_id"`
 	Created bool   `json:"created"`
 	Message string `json:"message,omitempty"`
+}
+
+type ClientChat struct {
+	conn   *websocket.Conn
+	chatId string
+	userId string
+	send   chan []byte
+	hub    *ClientHub
+}
+
+type ClientHub struct {
+	clientsChat map[*ClientChat]bool
+	register    chan *ClientChat
+	unregister  chan *ClientChat
+	broadcast   chan []byte
+	db          *sql.DB
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 // CreateChat создает новый чат или присоединяет к существующему
@@ -221,6 +253,109 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 		"chat_id": chatID,
 		"message": "Chat created successfully",
 	})
+}
+
+func (h *Handler) CreateConnectChat(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	chatID := vars["chatId"]
+
+	if chatID == "" {
+		http.Error(w, "Missing chat ID", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("CreateConnectChat: upgrader error: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	defer conn.Close()
+
+	newChatHub := getOrCreateChatHub(h.DB, chatID)
+
+	client := &ClientChat{
+		conn:   conn,
+		chatId: chatID,
+		send:   make(chan []byte, 256),
+		hub:    newChatHub,
+	}
+
+	client.hub.register <- client
+
+	go client.writePump()
+	go client.readPump(client.hub)
+}
+
+func getOrCreateChatHub(db *sql.DB, chatId string) *ClientHub {
+	hubMutex.Lock()
+	if hub, exists := chatHubs[chatId]; exists {
+		hubMutex.RUnlock()
+		return hub
+	}
+	hubMutex.RUnlock()
+	hubMutex.Lock()
+	defer hubMutex.Unlock()
+	if hub, exists := chatHubs[chatId]; exists {
+		return hub
+	}
+
+	newHub := NewClientHub(db)
+	go newHub.Run()
+	chatHubs[chatId] = newHub
+	return newHub
+}
+
+func (h *ClientHub) Run() {
+	for {
+		select {
+		case client := <-h.register:
+			println("Client registered", client)
+			client.conn.WriteMessage(websocket.TextMessage, []byte{})
+		}
+	}
+}
+
+func (c *ClientChat) readPump(hub *ClientHub) {
+	defer func() {
+		hub.unregister <- c
+		c.conn.Close()
+	}()
+
+	for {
+		_, message, err := c.conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		hub.broadcast <- message
+	}
+}
+
+func (c *ClientChat) writePump() {
+	defer c.conn.Close()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			c.conn.WriteMessage(websocket.TextMessage, message)
+		}
+	}
+}
+func NewClientHub(db *sql.DB) *ClientHub {
+	return &ClientHub{
+		clientsChat: make(map[*ClientChat]bool),
+		broadcast:   make(chan []byte, 256),
+		register:    make(chan *ClientChat),
+		unregister:  make(chan *ClientChat),
+		db:          db,
+	}
 }
 
 // Функция для генерации уникального ID чата

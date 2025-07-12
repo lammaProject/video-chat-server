@@ -62,15 +62,16 @@ func main() {
 	))
 
 	handler := routes.NewHandler(db)
-
-	// users
-	router.HandleFunc("/users", handler.GetUsers).Methods("GET")
-	router.HandleFunc("/users/{name}", handler.GetUser).Methods("GET")
 	router.HandleFunc("/users/register", handler.RegisterUser).Methods("POST")
 	router.HandleFunc("/users/login", handler.LoginUser).Methods("POST")
 
 	protectedRouter := router.PathPrefix("/auth").Subrouter()
 	protectedRouter.Use(routes.AuthMiddleware)
+
+	// users
+	protectedRouter.HandleFunc("/users", handler.GetUsers).Methods("GET")
+	protectedRouter.HandleFunc("/users/{name}", handler.GetUser).Methods("GET")
+
 	// friends
 	protectedRouter.HandleFunc("/friends", handler.CreateFriendship).Methods("POST")
 	protectedRouter.HandleFunc("/friends", handler.GetFriends).Methods("GET")
@@ -83,6 +84,7 @@ func main() {
 	// profile
 	protectedRouter.HandleFunc("/profile", handler.GetProfile).Methods("GET")
 	// ws
+	protectedRouter.HandleFunc("/ws/chats/{chatId}/connect", handler.CreateConnectChat)
 	protectedRouter.HandleFunc("/ws/{roomId}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		roomID := vars["roomId"]

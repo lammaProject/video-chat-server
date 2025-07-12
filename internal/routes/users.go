@@ -7,6 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 type RegisterRequest struct {
@@ -31,9 +32,36 @@ type AuthResponse struct {
 // @Failure      500  {object}  map[string]string
 // @Router       /users [get]
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT id, name FROM users ORDER BY id DESC`
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok {
+		log.Printf("User ID not found in context")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-	rows, err := h.DB.Query(query)
+	userIDInt, err := strconv.Atoi(userID)
+	if err != nil {
+		log.Printf("Invalid user ID format: %v", err)
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+    SELECT u.id, u.name, 
+           (
+               SELECT f.status 
+               FROM friendship f 
+               WHERE ((f.user_id = $1 AND f.friend_id = u.id::text) OR 
+                      (f.user_id = u.id::text AND f.friend_id = $2))
+               LIMIT 1
+           ) as is_friend
+    FROM users u
+    WHERE u.id != $3::integer
+    ORDER BY u.id DESC
+`
+
+	rows, err := h.DB.Query(query, userIDInt, userIDInt, userIDInt)
+
 	if err != nil {
 		log.Printf("Error fetching users: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -44,12 +72,12 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	var users []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Name); err != nil {
+		if err := rows.Scan(&user.ID, &user.Name, &user.IsFriend); err != nil {
 			log.Printf("Error scanning users: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		// Добавляем пользователя в массив - эта строка отсутствовала
+
 		users = append(users, user)
 	}
 
