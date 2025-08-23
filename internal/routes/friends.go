@@ -29,6 +29,11 @@ type AcceptedFriendRequest struct {
 	Friend_id string `json:"friend_id"`
 }
 
+type FriendResponse struct {
+	Name   string       `json:"name"`
+	Status FriendStatus `json:"status"`
+}
+
 // @Summary      Создание друга
 // @Tags         friends
 // @Accept       json
@@ -36,6 +41,7 @@ type AcceptedFriendRequest struct {
 // @Router       /auth/friends [post]
 // @Param data body routes.FriendRequest true "Данные"
 // @Security BearerAuth
+// @Success  200  {object} routes.FriendStatus
 func (h *Handler) CreateFriendship(w http.ResponseWriter, r *http.Request) {
 	var req FriendRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -86,7 +92,6 @@ func (h *Handler) CreateFriendship(w http.ResponseWriter, r *http.Request) {
 // @Accept       json
 // @Produce      json
 // @Router       /auth/friends [get]
-// @Param status query string true "Статус"
 // @Security BearerAuth
 func (h *Handler) GetFriends(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value("user_id").(string)
@@ -97,31 +102,33 @@ func (h *Handler) GetFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := r.URL.Query().Get("status")
+
 	if status == "" {
-		http.Error(w, "Invalid request params", http.StatusBadRequest)
+		log.Printf("Status query parameter is missing")
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	rows, err := h.DB.Query(`SELECT friend_id FROM friendship WHERE user_id = $1 AND status = $2`, userID, status)
+	rows, err := h.DB.Query(`SELECT u.name FROM friendship f JOIN users u ON f.friend_id::text = u.id::text WHERE f.user_id = $1 AND f.status = $2`, userID, status)
 	if err != nil {
 		log.Printf("Error querying friendships: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	var friendIds []string
+	var friends []FriendResponse
 	for rows.Next() {
-		var friendId string
-		err := rows.Scan(&friendId)
+		var friend FriendResponse
+		err := rows.Scan(&friend.Name, &friend.Status)
 		if err != nil {
 			log.Printf("Error scanning friendships: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		friendIds = append(friendIds, friendId)
+		friends = append(friends, friend)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(friendIds); err != nil {
+	if err := json.NewEncoder(w).Encode(friends); err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return

@@ -1,20 +1,20 @@
 basePath: /
 definitions:
-  internal_routes.AcceptedFriendRequest:
+  routes.AcceptedFriendRequest:
     properties:
       friend_id:
         type: string
     type: object
-  internal_routes.CreateChatRequest:
+  routes.CreateChatRequest:
     properties:
       friend_id:
         type: string
       name:
         type: string
       type_chat:
-        $ref: '#/definitions/internal_routes.TypeChat'
+        $ref: '#/definitions/routes.TypeChat'
     type: object
-  internal_routes.CreateChatResponse:
+  routes.CreateChatResponse:
     properties:
       chat_id:
         type: string
@@ -23,28 +23,36 @@ definitions:
       message:
         type: string
     type: object
-  internal_routes.FriendRequest:
+  routes.FriendRequest:
     properties:
       friend_id:
         type: string
       user_id:
         type: string
     type: object
-  internal_routes.LoginRequest:
+  routes.FriendStatus:
+    enum:
+    - pending
+    - accepted
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusAccepted
+  routes.LoginRequest:
     properties:
       name:
         type: string
       password:
         type: string
     type: object
-  internal_routes.RegisterRequest:
+  routes.RegisterRequest:
     properties:
       name:
         type: string
       password:
         type: string
     type: object
-  internal_routes.Room:
+  routes.Room:
     properties:
       created_by:
         type: string
@@ -54,7 +62,7 @@ definitions:
       name:
         type: string
     type: object
-  internal_routes.TypeChat:
+  routes.TypeChat:
     enum:
     - private
     - group
@@ -62,6 +70,18 @@ definitions:
     x-enum-varnames:
     - TypeChatPrivate
     - TypeChatGroup
+  routes.User:
+    properties:
+      id:
+        description: Пользователь
+        type: string
+      is_friend:
+        type: string
+      name:
+        type: string
+      password:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -88,14 +108,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/internal_routes.CreateChatRequest'
+          $ref: '#/definitions/routes.CreateChatRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Чат успешно создан или пользователь присоединен к существующему
           schema:
-            $ref: '#/definitions/internal_routes.CreateChatResponse'
+            $ref: '#/definitions/routes.CreateChatResponse'
       security:
       - BearerAuth: []
       summary: Создание чата
@@ -128,10 +148,14 @@ paths:
         name: data
         required: true
         schema:
-          $ref: '#/definitions/internal_routes.FriendRequest'
+          $ref: '#/definitions/routes.FriendRequest'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/routes.FriendStatus'
       security:
       - BearerAuth: []
       summary: Создание друга
@@ -147,7 +171,7 @@ paths:
         name: data
         required: true
         schema:
-          $ref: '#/definitions/internal_routes.AcceptedFriendRequest'
+          $ref: '#/definitions/routes.AcceptedFriendRequest'
       produces:
       - application/json
       responses: {}
@@ -174,7 +198,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/internal_routes.Room'
+              $ref: '#/definitions/routes.Room'
             type: array
       security:
       - BearerAuth: []
@@ -191,7 +215,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/internal_routes.Room'
+              $ref: '#/definitions/routes.Room'
             type: array
       security:
       - BearerAuth: []
@@ -206,6 +230,12 @@ paths:
       produces:
       - application/json
       responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/routes.User'
+            type: array
         "500":
           description: Internal Server Error
           schema:
@@ -242,7 +272,7 @@ paths:
         name: data
         required: true
         schema:
-          $ref: '#/definitions/internal_routes.LoginRequest'
+          $ref: '#/definitions/routes.LoginRequest'
       produces:
       - application/json
       responses: {}
@@ -260,7 +290,7 @@ paths:
         name: data
         required: true
         schema:
-          $ref: '#/definitions/internal_routes.RegisterRequest'
+          $ref: '#/definitions/routes.RegisterRequest'
       produces:
       - application/json
       responses: {}

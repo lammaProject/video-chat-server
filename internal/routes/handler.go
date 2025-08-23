@@ -93,10 +93,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func createToken(userID string) (string, error) {
+func createToken(userID string, userName string) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(), // Токен действителен 24 часа
+		"user_id":   userID,
+		"user_name": userName,
+		"exp":       time.Now().Add(time.Hour * 24).Unix(), // Токен действителен 24 часа
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

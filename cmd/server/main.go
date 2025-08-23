@@ -38,7 +38,7 @@ var db *sql.DB
 // @name Authorization
 // @description Введите ваш токен
 func main() {
-	var addr = flag.String("addr", "0.0.0.0:8080", "address to listen on")
+	var addr = flag.String("addr", "localhost:8080", "address to listen on")
 
 	flag.Parse()
 
@@ -78,13 +78,13 @@ func main() {
 	protectedRouter.HandleFunc("/friends/accepted", handler.AcceptedFriend).Methods("POST")
 	// chats
 	protectedRouter.HandleFunc("/chats", handler.CreateChat).Methods("POST")
-	// roms
+	// rooms
 	protectedRouter.HandleFunc("/rooms", handler.CreateRoom).Methods("POST")
 	protectedRouter.HandleFunc("/rooms", handler.GetRooms).Methods("GET")
 	// profile
 	protectedRouter.HandleFunc("/profile", handler.GetProfile).Methods("GET")
 	// ws
-	protectedRouter.HandleFunc("/ws/chats/{chatId}/connect", handler.CreateConnectChat)
+	router.HandleFunc("/ws/chats/{chatId}", handler.CreateConnectChat)
 	protectedRouter.HandleFunc("/ws/{roomId}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		roomID := vars["roomId"]
@@ -94,7 +94,6 @@ func main() {
 			return
 		}
 
-		// Получаем или создаем комнату
 		hub := roomManager.GetOrCreateRoom(roomID, db)
 		signaling.ServerWs(hub, w, r)
 	})
@@ -126,6 +125,7 @@ func main() {
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
@@ -140,10 +140,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 func initDB() error {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		databaseURL = "postgresql://postgres:lOQUudUlZXRXnLcwMatSSioGevydrLnL@mainline.proxy.rlwy.net:57379/railway"
-	}
+	databaseURL := "postgresql://postgres:lOQUudUlZXRXnLcwMatSSioGevydrLnL@mainline.proxy.rlwy.net:57379/railway"
 
 	var err error
 	db, err = sql.Open("postgres", databaseURL)

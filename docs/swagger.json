@@ -43,7 +43,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.CreateChatRequest"
+                            "$ref": "#/definitions/routes.CreateChatRequest"
                         }
                     }
                 ],
@@ -51,7 +51,7 @@
                     "200": {
                         "description": "Чат успешно создан или пользователь присоединен к существующему",
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.CreateChatResponse"
+                            "$ref": "#/definitions/routes.CreateChatResponse"
                         }
                     }
                 }
@@ -108,11 +108,18 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.FriendRequest"
+                            "$ref": "#/definitions/routes.FriendRequest"
                         }
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/routes.FriendStatus"
+                        }
+                    }
+                }
             }
         },
         "/auth/friends/accepted": {
@@ -139,7 +146,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.AcceptedFriendRequest"
+                            "$ref": "#/definitions/routes.AcceptedFriendRequest"
                         }
                     }
                 ],
@@ -181,7 +188,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_routes.Room"
+                                "$ref": "#/definitions/routes.Room"
                             }
                         }
                     }
@@ -209,7 +216,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_routes.Room"
+                                "$ref": "#/definitions/routes.Room"
                             }
                         }
                     }
@@ -230,6 +237,15 @@
                 ],
                 "summary": "Получить всех пользователей",
                 "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/routes.User"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -261,7 +277,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.LoginRequest"
+                            "$ref": "#/definitions/routes.LoginRequest"
                         }
                     }
                 ],
@@ -288,7 +304,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.RegisterRequest"
+                            "$ref": "#/definitions/routes.RegisterRequest"
                         }
                     }
                 ],
@@ -322,7 +338,7 @@
         }
     },
     "definitions": {
-        "internal_routes.AcceptedFriendRequest": {
+        "routes.AcceptedFriendRequest": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -330,7 +346,7 @@
                 }
             }
         },
-        "internal_routes.CreateChatRequest": {
+        "routes.CreateChatRequest": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -340,11 +356,11 @@
                     "type": "string"
                 },
                 "type_chat": {
-                    "$ref": "#/definitions/internal_routes.TypeChat"
+                    "$ref": "#/definitions/routes.TypeChat"
                 }
             }
         },
-        "internal_routes.CreateChatResponse": {
+        "routes.CreateChatResponse": {
             "type": "object",
             "properties": {
                 "chat_id": {
@@ -358,7 +374,7 @@
                 }
             }
         },
-        "internal_routes.FriendRequest": {
+        "routes.FriendRequest": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -369,7 +385,18 @@
                 }
             }
         },
-        "internal_routes.LoginRequest": {
+        "routes.FriendStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "accepted"
+            ],
+            "x-enum-varnames": [
+                "StatusPending",
+                "StatusAccepted"
+            ]
+        },
+        "routes.LoginRequest": {
             "type": "object",
             "properties": {
                 "name": {
@@ -380,7 +407,7 @@
                 }
             }
         },
-        "internal_routes.RegisterRequest": {
+        "routes.RegisterRequest": {
             "type": "object",
             "properties": {
                 "name": {
@@ -391,7 +418,7 @@
                 }
             }
         },
-        "internal_routes.Room": {
+        "routes.Room": {
             "type": "object",
             "properties": {
                 "created_by": {
@@ -406,7 +433,7 @@
                 }
             }
         },
-        "internal_routes.TypeChat": {
+        "routes.TypeChat": {
             "type": "string",
             "enum": [
                 "private",
@@ -416,6 +443,24 @@
                 "TypeChatPrivate",
                 "TypeChatGroup"
             ]
+        },
+        "routes.User": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "description": "Пользователь",
+                    "type": "string"
+                },
+                "is_friend": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
         }
     },
     "securityDefinitions": {

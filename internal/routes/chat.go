@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"log"
@@ -54,15 +55,21 @@ type ClientChat struct {
 	conn   *websocket.Conn
 	chatId string
 	userId string
-	send   chan []byte
+	send   chan *MessageChat
 	hub    *ClientHub
+	name   string
+}
+
+type MessageChat struct {
+	Message string `json:"message"`
+	Name    string `json:"name"`
 }
 
 type ClientHub struct {
 	clientsChat map[*ClientChat]bool
 	register    chan *ClientChat
 	unregister  chan *ClientChat
-	broadcast   chan []byte
+	broadcast   chan *MessageChat
 	db          *sql.DB
 }
 
@@ -123,8 +130,8 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 		var status string
 		err = tx.QueryRow(`
 			SELECT status FROM friendship 
-			WHERE (user_id = $1 AND friend_id = $2) 
-			   OR (user_id = $2 AND friend_id = $1)
+			WHERE ((user_id = $1 AND friend_id = $2) 
+			   OR (user_id = $2 AND friend_id = $1))
 			AND status = 'accepted'
 		`, userID, req.FriendId).Scan(&status)
 
@@ -264,6 +271,19 @@ func (h *Handler) CreateConnectChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jwtSecret, nil
+	})
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("CreateConnectChat: upgrader error: %v", err)
@@ -271,15 +291,58 @@ func (h *Handler) CreateConnectChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer conn.Close()
+	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		log.Println("Invalid token claims")
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+	userId, ok := claims["user_id"].(string)
+	if !ok {
+		log.Println("User Name not found in context")
+		conn.Close()
+		return
+	}
+
+	userName, ok := claims["user_name"].(string)
+	if !ok {
+		log.Println("User Name not found in context")
+		conn.Close()
+		return
+	}
+
+	var exists bool
+	err = h.DB.QueryRow(`
+    SELECT EXISTS(
+        SELECT 1 FROM chat_participants
+        WHERE chat_id = $1 AND user_id = $2
+    )
+`, chatID, userId).Scan(&exists)
+
+	if err != nil {
+		log.Printf("CreateConnectChat: chat participant check error: %v", err)
+		conn.Close()
+		return
+	}
+	if !exists {
+		errMsg := map[string]string{
+			"name":    "error",
+			"message": "Вы не участник этого чата",
+		}
+		data, _ := json.Marshal(errMsg)
+		conn.WriteMessage(websocket.TextMessage, data)
+		conn.Close()
+		return
+	}
 
 	newChatHub := getOrCreateChatHub(h.DB, chatID)
 
 	client := &ClientChat{
 		conn:   conn,
 		chatId: chatID,
-		send:   make(chan []byte, 256),
+		send:   make(chan *MessageChat, 256),
 		hub:    newChatHub,
+		name:   userName,
 	}
 
 	client.hub.register <- client
@@ -289,15 +352,17 @@ func (h *Handler) CreateConnectChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func getOrCreateChatHub(db *sql.DB, chatId string) *ClientHub {
-	hubMutex.Lock()
-	if hub, exists := chatHubs[chatId]; exists {
-		hubMutex.RUnlock()
+	hubMutex.RLock()
+	hub, exists := chatHubs[chatId]
+	hubMutex.RUnlock()
+	if exists {
 		return hub
 	}
-	hubMutex.RUnlock()
+
 	hubMutex.Lock()
 	defer hubMutex.Unlock()
-	if hub, exists := chatHubs[chatId]; exists {
+	hub, exists = chatHubs[chatId]
+	if exists {
 		return hub
 	}
 
@@ -311,8 +376,35 @@ func (h *ClientHub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			h.clientsChat[client] = true
 			println("Client registered", client)
-			client.conn.WriteMessage(websocket.TextMessage, []byte{})
+			message := &MessageChat{
+				Message: "Is online",
+				Name:    client.name,
+			}
+			client.hub.broadcast <- message
+
+		case client := <-h.unregister:
+			if _, ok := h.clientsChat[client]; ok {
+				message := &MessageChat{
+					Message: "Left from chat",
+					Name:    client.name,
+				}
+				client.hub.broadcast <- message
+				delete(h.clientsChat, client)
+				println("Client unregistered", client)
+				close(client.send)
+			}
+
+		case msg := <-h.broadcast:
+			for client := range h.clientsChat {
+				select {
+				case client.send <- msg:
+				default:
+					close(client.send)
+					delete(h.clientsChat, client)
+				}
+			}
 		}
 	}
 }
@@ -324,12 +416,16 @@ func (c *ClientChat) readPump(hub *ClientHub) {
 	}()
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, text, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
 
-		hub.broadcast <- message
+		msg := &MessageChat{
+			Message: string(text),
+			Name:    c.name,
+		}
+		hub.broadcast <- msg
 	}
 }
 
@@ -344,14 +440,22 @@ func (c *ClientChat) writePump() {
 				return
 			}
 
-			c.conn.WriteMessage(websocket.TextMessage, message)
+			// Сериализация структуры в JSON
+			data, err := json.Marshal(message)
+			println(string(data))
+			if err != nil {
+				log.Println("marshal error:", err)
+				continue
+			}
+
+			c.conn.WriteMessage(websocket.TextMessage, data)
 		}
 	}
 }
 func NewClientHub(db *sql.DB) *ClientHub {
 	return &ClientHub{
 		clientsChat: make(map[*ClientChat]bool),
-		broadcast:   make(chan []byte, 256),
+		broadcast:   make(chan *MessageChat, 256),
 		register:    make(chan *ClientChat),
 		unregister:  make(chan *ClientChat),
 		db:          db,

@@ -24,6 +24,18 @@ type AuthResponse struct {
 	User  User   `json:"user"`
 }
 
+type FriendProfile struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type UserProfile struct {
+	Id      string          `json:"id"`
+	Name    string          `json:"name"`
+	Friends []FriendProfile `json:"friends"`
+	Avatar  string          `json:"avatar"`
+}
+
 // @Summary      Получить всех пользователей
 // @Description  Получить список всех пользователей
 // @Tags         users
@@ -31,6 +43,7 @@ type AuthResponse struct {
 // @Produce      json
 // @Failure      500  {object}  map[string]string
 // @Router       /users [get]
+// @Success 200 {array} routes.User
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {
@@ -52,7 +65,7 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
                SELECT f.status 
                FROM friendship f 
                WHERE ((f.user_id = $1 AND f.friend_id = u.id::text) OR 
-                      (f.user_id = u.id::text AND f.friend_id = $2))
+                      (f.user_id = u.id::text AND f.friend_id = $2) AND (f.status = 'accepted' OR f.status = 'pending'))
                LIMIT 1
            ) as is_friend
     FROM users u
@@ -101,15 +114,31 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param name path string true "Имя пользователя"
 // @Router /users/{name} [get]
+// @Success 200 {object} routes.UserProfile
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	query := `SELECT id, name FROM users WHERE name = $1`
+	query := `SELECT u.id, u.name, 
+  (SELECT json_agg(json_build_object(
+      'id', friends.id::text, 
+      'name', friends.name
+    ))
+   FROM users friends
+   WHERE EXISTS (
+     SELECT 1 FROM friendship f
+     WHERE ((f.user_id = u.id::text AND f.friend_id = friends.id::text) OR 
+            (f.friend_id = u.id::text AND f.user_id = friends.id::text))
+       AND f.status = 'accepted'
+   )
+  ) as friends
+FROM users u 
+WHERE name = $1`
 	row := h.DB.QueryRow(query, name)
 
-	var user User
-	if err := row.Scan(&user.ID, &user.Name); err != nil {
+	var user UserProfile
+	var friendsJSON []byte
+	if err := row.Scan(&user.Id, &user.Name, &friendsJSON); err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("User not found: %s", name)
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -118,6 +147,15 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error scanning user: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	if len(friendsJSON) > 0 {
+		err := json.Unmarshal(friendsJSON, &user.Friends)
+		if err != nil {
+			log.Printf("Error unmarshaling friends: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -180,7 +218,7 @@ func (h *Handler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := createToken(user.ID)
+	token, err := createToken(user.ID, user.Name)
 	if err != nil {
 		log.Printf("Error creating token: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -235,7 +273,7 @@ func (h *Handler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Создание JWT токена
-	token, err := createToken(user.ID)
+	token, err := createToken(user.ID, user.Name)
 	if err != nil {
 		log.Printf("Error creating token: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

@@ -49,7 +49,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.CreateChatRequest"
+                            "$ref": "#/definitions/routes.CreateChatRequest"
                         }
                     }
                 ],
@@ -57,7 +57,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Чат успешно создан или пользователь присоединен к существующему",
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.CreateChatResponse"
+                            "$ref": "#/definitions/routes.CreateChatResponse"
                         }
                     }
                 }
@@ -114,11 +114,18 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.FriendRequest"
+                            "$ref": "#/definitions/routes.FriendRequest"
                         }
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/routes.FriendStatus"
+                        }
+                    }
+                }
             }
         },
         "/auth/friends/accepted": {
@@ -145,7 +152,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.AcceptedFriendRequest"
+                            "$ref": "#/definitions/routes.AcceptedFriendRequest"
                         }
                     }
                 ],
@@ -187,7 +194,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_routes.Room"
+                                "$ref": "#/definitions/routes.Room"
                             }
                         }
                     }
@@ -215,7 +222,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_routes.Room"
+                                "$ref": "#/definitions/routes.Room"
                             }
                         }
                     }
@@ -236,6 +243,15 @@ const docTemplate = `{
                 ],
                 "summary": "Получить всех пользователей",
                 "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/routes.User"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -267,7 +283,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.LoginRequest"
+                            "$ref": "#/definitions/routes.LoginRequest"
                         }
                     }
                 ],
@@ -294,7 +310,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_routes.RegisterRequest"
+                            "$ref": "#/definitions/routes.RegisterRequest"
                         }
                     }
                 ],
@@ -328,7 +344,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_routes.AcceptedFriendRequest": {
+        "routes.AcceptedFriendRequest": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -336,7 +352,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_routes.CreateChatRequest": {
+        "routes.CreateChatRequest": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -346,11 +362,11 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type_chat": {
-                    "$ref": "#/definitions/internal_routes.TypeChat"
+                    "$ref": "#/definitions/routes.TypeChat"
                 }
             }
         },
-        "internal_routes.CreateChatResponse": {
+        "routes.CreateChatResponse": {
             "type": "object",
             "properties": {
                 "chat_id": {
@@ -364,7 +380,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_routes.FriendRequest": {
+        "routes.FriendRequest": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -375,7 +391,18 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_routes.LoginRequest": {
+        "routes.FriendStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "accepted"
+            ],
+            "x-enum-varnames": [
+                "StatusPending",
+                "StatusAccepted"
+            ]
+        },
+        "routes.LoginRequest": {
             "type": "object",
             "properties": {
                 "name": {
@@ -386,7 +413,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_routes.RegisterRequest": {
+        "routes.RegisterRequest": {
             "type": "object",
             "properties": {
                 "name": {
@@ -397,7 +424,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_routes.Room": {
+        "routes.Room": {
             "type": "object",
             "properties": {
                 "created_by": {
@@ -412,7 +439,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_routes.TypeChat": {
+        "routes.TypeChat": {
             "type": "string",
             "enum": [
                 "private",
@@ -422,6 +449,24 @@ const docTemplate = `{
                 "TypeChatPrivate",
                 "TypeChatGroup"
             ]
+        },
+        "routes.User": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "description": "Пользователь",
+                    "type": "string"
+                },
+                "is_friend": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
         }
     },
     "securityDefinitions": {
