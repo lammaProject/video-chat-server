@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	_ "server/docs"
 	"server/internal/routes"
+	"server/internal/routes/game"
 	"server/internal/signaling"
 	"syscall"
 	"time"
@@ -78,12 +79,14 @@ func main() {
 	protectedRouter.HandleFunc("/friends/accepted", handler.AcceptedFriend).Methods("POST")
 	// chats
 	protectedRouter.HandleFunc("/chats", handler.CreateChat).Methods("POST")
+	protectedRouter.HandleFunc("/chats", handler.GetChat).Methods("GET")
 	// rooms
 	protectedRouter.HandleFunc("/rooms", handler.CreateRoom).Methods("POST")
 	protectedRouter.HandleFunc("/rooms", handler.GetRooms).Methods("GET")
 	// profile
 	protectedRouter.HandleFunc("/profile", handler.GetProfile).Methods("GET")
 	// ws
+	router.HandleFunc("/ws/game/{gameId}", game.CreateConnectGame)
 	router.HandleFunc("/ws/chats/{chatId}", handler.CreateConnectChat)
 	protectedRouter.HandleFunc("/ws/{roomId}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)

@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -31,7 +32,14 @@ type CreateChatRequest struct {
 	TypeChat TypeChat `json:"type_chat"`
 	Name     string   `json:"name"`
 }
-
+type Message struct {
+	ID          int       `json:"id"`
+	SenderID    string    `json:"sender_id"`
+	Text        string    `json:"message_text"`
+	MessageType string    `json:"message_type"`
+	IsRead      bool      `json:"is_read"`
+	CreatedAt   time.Time `json:"created_at"`
+}
 type Chat struct {
 	Id   string   `json:"id"`
 	Type TypeChat `json:"type"`
@@ -61,8 +69,10 @@ type ClientChat struct {
 }
 
 type MessageChat struct {
-	Message string `json:"message"`
-	Name    string `json:"name"`
+	Message  string `json:"message"`
+	Name     string `json:"name"`
+	ChatId   string `json:"chat_id"`
+	SenderId string `json:"sender_id"`
 }
 
 type ClientHub struct {
@@ -79,6 +89,101 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
+}
+
+// GetChat Получение переписки из чата
+// @Summary Получение чата
+// @Description Получение чата
+// @Tags chats
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} CreateChatResponse "Чат успешно создан или пользователь присоединен к существующему"
+// @Router /auth/chats [post]
+func (h *Handler) GetChat(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	chatID := r.URL.Query().Get("chat_id")
+	if chatID == "" {
+		http.Error(w, "Missing chat_id parameter", http.StatusBadRequest)
+		return
+	}
+	limit := 50 // По умолчанию 50 сообщений
+	offset := 0
+
+	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
+		if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	if offsetParam := r.URL.Query().Get("offset"); offsetParam != "" {
+		if parsedOffset, err := strconv.Atoi(offsetParam); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	if !h.userHasAccessToChat(userID, chatID) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	query := `
+    SELECT id, sender_id, message_text, "message_type ", is_read
+    FROM messages
+    WHERE chat_id = $1
+    ORDER BY id ASC  
+    LIMIT $2 OFFSET $3
+`
+
+	rows, err := h.DB.Query(query, chatID, limit, offset)
+	if err != nil {
+		log.Printf("Database error: %v", err)
+		http.Error(w, "Failed to get chat history", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	messages := []Message{}
+	for rows.Next() {
+		var msg Message
+
+		err := rows.Scan(&msg.ID, &msg.SenderID, &msg.Text, &msg.MessageType, &msg.IsRead)
+		if err != nil {
+			log.Printf("Error scanning message row: %v", err)
+			continue
+		}
+
+		messages = append(messages, msg)
+
+		if err = rows.Err(); err != nil {
+			log.Printf("Error iterating through results: %v", err)
+			http.Error(w, "Error processing chat history", http.StatusInternalServerError)
+			return
+		}
+
+	}
+
+	response := struct {
+		ChatID   string    `json:"chat_id"`
+		Messages []Message `json:"messages"`
+		Total    int       `json:"total_messages"`
+	}{
+		ChatID:   chatID,
+		Messages: messages,
+		Total:    len(messages),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding response: %v", err)
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // CreateChat создает новый чат или присоединяет к существующему
@@ -343,6 +448,7 @@ func (h *Handler) CreateConnectChat(w http.ResponseWriter, r *http.Request) {
 		send:   make(chan *MessageChat, 256),
 		hub:    newChatHub,
 		name:   userName,
+		userId: userId,
 	}
 
 	client.hub.register <- client
@@ -379,16 +485,20 @@ func (h *ClientHub) Run() {
 			h.clientsChat[client] = true
 			println("Client registered", client)
 			message := &MessageChat{
-				Message: "Is online",
-				Name:    client.name,
+				Message:  "Is online",
+				Name:     client.name,
+				ChatId:   client.chatId,
+				SenderId: client.userId,
 			}
 			client.hub.broadcast <- message
 
 		case client := <-h.unregister:
 			if _, ok := h.clientsChat[client]; ok {
 				message := &MessageChat{
-					Message: "Left from chat",
-					Name:    client.name,
+					Message:  "Left from chat",
+					Name:     client.name,
+					ChatId:   client.chatId,
+					SenderId: client.userId,
 				}
 				client.hub.broadcast <- message
 				delete(h.clientsChat, client)
@@ -397,6 +507,27 @@ func (h *ClientHub) Run() {
 			}
 
 		case msg := <-h.broadcast:
+			if msg.Message != "Is online" && msg.Message != "Left from chat" {
+				query := `
+		INSERT INTO messages (chat_id, sender_id, message_text, "message_type ", is_read )
+		VALUES ($1, $2, $3, $4, true)
+		RETURNING id
+	`
+				var messageID int
+				err := h.db.QueryRow(
+					query,
+					msg.ChatId,
+					msg.SenderId,
+					msg.Message,
+					"type",
+				).Scan(&messageID)
+
+				if err != nil {
+					log.Printf("Run: insert message error: %v", err)
+					return
+				}
+			}
+
 			for client := range h.clientsChat {
 				select {
 				case client.send <- msg:
@@ -422,8 +553,10 @@ func (c *ClientChat) readPump(hub *ClientHub) {
 		}
 
 		msg := &MessageChat{
-			Message: string(text),
-			Name:    c.name,
+			Message:  string(text),
+			Name:     c.name,
+			ChatId:   c.chatId,
+			SenderId: c.userId,
 		}
 		hub.broadcast <- msg
 	}
@@ -442,7 +575,6 @@ func (c *ClientChat) writePump() {
 
 			// Сериализация структуры в JSON
 			data, err := json.Marshal(message)
-			println(string(data))
 			if err != nil {
 				log.Println("marshal error:", err)
 				continue
@@ -474,4 +606,24 @@ func generateRandomString(length int) string {
 		b[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(b)
+}
+
+func (h *Handler) userHasAccessToChat(userID, chatID string) bool {
+	// Здесь должна быть логика проверки прав доступа
+	// Например, проверка, является ли пользователь участником чата
+
+	query := `
+		SELECT COUNT(*) 
+		FROM chat_participants 
+		WHERE chat_id = $1 AND user_id = $2
+	`
+
+	var count int
+	err := h.DB.QueryRow(query, chatID, userID).Scan(&count)
+	if err != nil {
+		log.Printf("Error checking chat access: %v", err)
+		return false
+	}
+
+	return count > 0
 }
